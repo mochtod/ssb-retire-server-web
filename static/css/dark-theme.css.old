@@ -1,0 +1,242 @@
+/* Dark Theme Styles */
+:root {
+  --dark-bg: #121212;
+  --dark-card-bg: #1e1e1e;
+  --dark-input-bg: #2d2d2d;
+  --dark-border: #444;
+  --dark-text: #e0e0e0;
+  --dark-text-secondary: #aaa;
+  --dark-btn-primary: #0d6efd;
+  --dark-btn-primary-hover: #0b5ed7;
+  --dark-btn-secondary: #5a5a5a;
+  --dark-btn-secondary-hover: #4a4a4a;
+  --dark-recommendation-bg: #2d2d2d;
+  --dark-recommendation-hover: #3d3d3d;
+  --dark-success: #198754;
+  --dark-danger: #dc3545;
+}
+
+body.dark-mode {
+  background-color: var(--dark-bg);
+  color: var(--dark-text);
+}
+
+/* Card styling */
+.dark-mode .card {
+  background-color: var(--dark-card-bg);
+  border-color: var(--dark-border);
+}
+
+/* Form controls */
+.dark-mode .form-control,
+.dark-mode .form-select {
+  background-color: var(--dark-input-bg);
+  border-color: var(--dark-border);
+  color: var(--dark-text);
+}
+
+.dark-mode .form-control:focus,
+.dark-mode .form-select:focus {
+  background-color: var(--dark-input-bg);
+  color: var(--dark-text);
+  border-color: var(--dark-btn-primary);
+}
+
+.dark-mode .form-control::placeholder {
+  color: var(--dark-text-secondary);
+}
+
+/* Input groups */
+.dark-mode .input-group-text {
+  background-color: var(--dark-btn-secondary);
+  border-color: var(--dark-border);
+  color: var(--dark-text);
+}
+
+/* Buttons */
+.dark-mode .btn-outline-secondary {
+  color: var(--dark-text);
+  border-color: var(--dark-border);
+}
+
+.dark-mode .btn-outline-secondary:hover {
+  background-color: var(--dark-btn-secondary-hover);
+  color: var(--dark-text);
+}
+
+.dark-mode .btn-primary {
+  background-color: var(--dark-btn-primary);
+  border-color: var(--dark-btn-primary);
+}
+
+.dark-mode .btn-primary:hover {
+  background-color: var(--dark-btn-primary-hover);
+  border-color: var(--dark-btn-primary-hover);
+}
+
+.dark-mode .btn-secondary {
+  background-color: var(--dark-btn-secondary);
+  border-color: var(--dark-btn-secondary);
+}
+
+/* Lists */
+.dark-mode .list-group-item {
+  background-color: var(--dark-card-bg);
+  border-color: var(--dark-border);
+  color: var(--dark-text);
+}
+
+/* Date and time recommendations */
+.dark-mode .time-recommendation,
+.dark-mode .date-recommendation {
+  background-color: var(--dark-recommendation-bg);
+  color: var(--dark-text);
+}
+
+.dark-mode .time-recommendation:hover,
+.dark-mode .date-recommendation:hover {
+  background-color: var(--dark-recommendation-hover);
+}
+
+/* Readonly/disabled inputs */
+.dark-mode input[readonly],
+.dark-mode input:disabled {
+  background-color: var(--dark-input-bg);
+  opacity: 0.7;
+}
+
+/* Small text */
+.dark-mode .text-muted {
+  color: var(--dark-text-secondary) !important;
+}
+
+/* Theme toggle button */
+.theme-toggle {
+  position: fixed;
+  right: 20px;
+  top: 20px;
+  z-index: 1000;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: none;
+  background-color: var(--dark-card-bg);
+  color: var(--dark-text);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s ease;
+}
+
+.theme-toggle:hover {
+  transform: scale(1.1);
+}
+
+body:not(.dark-mode) .theme-toggle {
+  background-color: #f8f9fa;
+  color: #212529;
+}
+
+.theme-toggle .sun-icon,
+.theme-toggle .moon-icon {
+  font-size: 1.2rem;
+}
+
+.dark-mode .theme-toggle .sun-icon {
+  display: inline-block;
+}
+
+.dark-mode .theme-toggle .moon-icon {
+  display: none;
+}
+
+body:not(.dark-mode) .theme-toggle .sun-icon {
+  display: none;
+}
+
+body:not(.dark-mode) .theme-toggle .moon-icon {
+  display: inline-block;
+}
+
+/* Modal styling */
+.dark-mode .modal-content {
+  background-color: var(--dark-card-bg);
+  border-color: var(--dark-border);
+}
+
+.dark-mode .modal-header,
+.dark-mode .modal-footer {
+  border-color: var(--dark-border);
+}
+
+.dark-mode .close {
+  color: var(--dark-text);
+}
+
+/* Alert styling */
+.dark-mode .alert-success {
+  background-color: rgba(25, 135, 84, 0.2);
+  color: #8edcb3;
+  border-color: rgba(25, 135, 84, 0.4);
+}
+
+.dark-mode .alert-danger {
+  background-color: rgba(220, 53, 69, 0.2);
+  color: #f5b8bf;
+  border-color: rgba(220, 53, 69, 0.4);
+}
+
+/* Flatpickr customizations for dark mode */
+.dark-mode .flatpickr-calendar {
+  background: var(--dark-card-bg);
+  border-color: var(--dark-border);
+  box-shadow: 0 3px 13px rgba(0, 0, 0, 0.3);
+}
+
+.dark-mode .flatpickr-months .flatpickr-month,
+.dark-mode .flatpickr-current-month .flatpickr-monthDropdown-months,
+.dark-mode .flatpickr-months .flatpickr-prev-month, 
+.dark-mode .flatpickr-months .flatpickr-next-month {
+  background: var(--dark-card-bg);
+  color: var(--dark-text);
+  fill: var(--dark-text);
+}
+
+.dark-mode .flatpickr-weekday {
+  color: var(--dark-text-secondary);
+}
+
+.dark-mode .flatpickr-day {
+  color: var(--dark-text);
+}
+
+.dark-mode .flatpickr-day.selected,
+.dark-mode .flatpickr-day.startRange,
+.dark-mode .flatpickr-day.endRange {
+  background: var(--dark-btn-primary);
+  border-color: var(--dark-btn-primary);
+}
+
+.dark-mode .flatpickr-day.today {
+  border-color: var(--dark-text);
+}
+
+.dark-mode .flatpickr-day:hover {
+  background: var(--dark-recommendation-hover);
+}
+
+.dark-mode .flatpickr-time {
+  border-top-color: var(--dark-border);
+}
+
+.dark-mode .flatpickr-time input,
+.dark-mode .flatpickr-time .flatpickr-am-pm {
+  background: var(--dark-card-bg);
+  color: var(--dark-text);
+}
+
+.dark-mode .numInputWrapper:hover {
+  background: var(--dark-recommendation-hover);
+}

@@ -1,0 +1,100 @@
+body {
+    background-color: #f8f9fa;
+    padding-bottom: 40px;
+}
+
+.container {
+    max-width: 800px;
+}
+
+.card {
+    border-radius: 10px;
+    border: none;
+    margin-bottom: 30px;
+}
+
+header {
+    margin-bottom: 30px;
+}
+
+.list-group-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.remove-record {
+    cursor: pointer;
+    color: #dc3545;
+}
+
+.remove-record:hover {
+    color: #a71d2a;
+}
+
+.spinner-border {
+    margin-right: 8px;
+    width: 1rem;
+    height: 1rem;
+}
+
+.time-recommendations {
+    margin-top: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.time-recommendation {
+    font-size: 0.8rem;
+    padding: 3px 8px;
+    border-radius: 12px;
+    background-color: #e9ecef;
+    cursor: pointer;
+}
+
+.time-recommendation:hover {
+    background-color: #dee2e6;
+}
+
+.date-recommendation {
+    font-size: 0.8rem;
+    padding: 3px 8px;
+    border-radius: 12px;
+    background-color: #e9ecef;
+    cursor: pointer;
+    margin-right: 5px;
+    margin-bottom: 5px;
+    display: inline-block;
+}
+
+.date-recommendation:hover {
+    background-color: #dee2e6;
+}
+
+.date-recommendations {
+    margin-top: 10px;
+}
+
+/* Disabled/readonly input styling */
+input[readonly],
+input:disabled {
+    background-color: #f8f9fa;
+    opacity: 0.8;
+    cursor: not-allowed;
+}
+
+/* Custom zone input styling */
+#custom-zone-container {
+    margin-top: 8px;
+}
+
+/* DNS Zone dropdown specific styles */
+#dns-zone {
+    border-color: #ced4da;
+}
+
+#dns-zone:focus {
+    border-color: #86b7fe;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
