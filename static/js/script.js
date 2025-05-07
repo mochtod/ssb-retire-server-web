@@ -256,6 +256,12 @@ document.addEventListener('DOMContentLoaded', function() {
         const recordName = recordNameInput.value.trim();
         if (recordName === '') return;
         
+        // Enforce single VM limit
+        if (recordNames.length >= 1) {
+            alert('Only one VM can be scheduled per job. Please remove the existing VM first.');
+            return;
+        }
+        
         if (recordNames.includes(recordName)) {
             alert('This record name has already been added.');
             return;
@@ -308,8 +314,9 @@ document.addEventListener('DOMContentLoaded', function() {
     form.addEventListener('submit', function(e) {
         e.preventDefault();
         
-        if (recordNames.length === 0) {
-            alert('Please add at least one VM record name.');
+        // Ensure exactly one VM is added
+        if (recordNames.length !== 1) {
+            alert('Please add exactly one VM record name.');
             return;
         }
         

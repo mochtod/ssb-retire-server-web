@@ -135,9 +135,18 @@ def launch_job():
                 'error': 'No AAP token configured. Set the AAP_TOKEN environment variable.'
             }), 500
             
+        record_names = data.get("record_names", [])
+        
+        # Validate that exactly one record name is provided
+        if len(record_names) != 1:
+            app.logger.warning(f"Attempted to schedule job with {len(record_names)} VMs. Only one is allowed.")
+            return jsonify({
+                'error': 'Invalid request: Exactly one VM record name must be provided per job.'
+            }), 400
+            
         # Format the extra vars
         extra_vars = {
-            "record_names": data.get("record_names", []),
+            "record_names": record_names, # Now guaranteed to be a list with one item
             "schedule_shutdown_date": data.get("schedule_shutdown_date"),
             "schedule_retire_date": data.get("schedule_retire_date"),
             "schedule_shutdown_time": data.get("schedule_shutdown_time"),
