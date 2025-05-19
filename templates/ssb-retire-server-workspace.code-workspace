@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"name": "ssb-retire-server",
+			"path": "../../../OneDrive - C.H. Robinson/Desktop/ssb-retire-server"
+		}
+	],
+	"settings": {
+		"ansible.python.interpreterPath": "c:\\Users\\mochtod\\AppData\\Local\\Programs\\Python\\Python312\\python.exe"
+	}
+}
