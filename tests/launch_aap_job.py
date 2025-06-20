@@ -21,7 +21,7 @@ payload = {
         "schedule_retire_date": "2025/04/11",
         "schedule_shutdown_time": "12:00:00",
         "schedule_retire_time": "12:30:00",
-        "dns_server": "chr2pr2dc38.chrobinson.com",
+        "dns_server": ["10.68.64.100", "10.68.64.101"],
         "dns_zone": "freightquote.com"
     }
 }
