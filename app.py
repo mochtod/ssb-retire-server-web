@@ -137,16 +137,16 @@ def launch_job():
             
         record_names = data.get("record_names", [])
         
-        # Validate that exactly one record name is provided
-        if len(record_names) != 1:
-            app.logger.warning(f"Attempted to schedule job with {len(record_names)} VMs. Only one is allowed.")
+        # Validate that 1-5 record names are provided
+        if len(record_names) < 1 or len(record_names) > 5:
+            app.logger.warning(f"Attempted to schedule job with {len(record_names)} VMs. Must be between 1-5.")
             return jsonify({
-                'error': 'Invalid request: Exactly one VM record name must be provided per job.'
+                'error': 'Invalid request: Between 1 and 5 VM record names must be provided per job.'
             }), 400
             
         # Format the extra vars
         extra_vars = {
-            "record_names": record_names, # Now guaranteed to be a list with one item
+            "record_names": record_names, # List with 1-5 items
             "schedule_shutdown_date": data.get("schedule_shutdown_date"),
             "schedule_retire_date": data.get("schedule_retire_date"),
             "schedule_shutdown_time": data.get("schedule_shutdown_time"),
