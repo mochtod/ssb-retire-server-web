@@ -5,9 +5,9 @@ services:
       - "5000:5000"
     environment:
       - AAP_URL=https://ansibleaap.chrobinson.com
-      - AAP_TOKEN=22tTr8IldpcV9A5w6mAgUxwkZLjHk7  # Your working token
+      - AAP_TOKEN=${AAP_TOKEN}  # Set via environment variable for security
       - AAP_TEMPLATE_ID=66  # Replace with your actual template ID
-      - BASIC_AUTH_USERNAME=admin
-      - BASIC_AUTH_PASSWORD=password
+      - BASIC_AUTH_USERNAME=${BASIC_AUTH_USERNAME:-admin}  # Default: admin
+      - BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASSWORD:-password}  # Default: password (CHANGE IN PRODUCTION)
       - FLASK_DEBUG=True
     restart: unless-stopped
