@@ -1,8 +1,9 @@
 import requests
+import os
 
-AAP_URL = "https://ansibleaap.chrobinson.com"
-TOKEN = "22tTr8IldpcV9A5w6mAgUxwkZLjHk7"
-TEMPLATE_ID = 66  # Replace with your job template ID
+AAP_URL = os.environ.get('AAP_URL', 'https://ansibleaap.chrobinson.com')
+TOKEN = os.environ.get('AAP_TOKEN', '22tTr8IldpcV9A5w6mAgUxwkZLjHk7')  # Fallback for development
+TEMPLATE_ID = int(os.environ.get('AAP_TEMPLATE_ID', '66'))
 
 headers = {
     "Authorization": f"Bearer {TOKEN}",
