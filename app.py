@@ -151,8 +151,8 @@ def launch_job():
             "schedule_retire_date": data.get("schedule_retire_date"),
             "schedule_shutdown_time": data.get("schedule_shutdown_time"),
             "schedule_retire_time": data.get("schedule_retire_time"),
-            "dns_server": data.get("dns_server", ["10.68.64.100", "10.68.64.101"]),
-            "dns_zone": data.get("dns_zone", "freightquote.com")
+            "dns_server": data.get("dns_server", "chrpr2dc38.chrobinson.com"),
+            "dns_zone": data.get("dns_zone", "chrobinson.com")
         }
         
         app.logger.debug(f"Launching job with extra vars: {json.dumps(extra_vars)}")
