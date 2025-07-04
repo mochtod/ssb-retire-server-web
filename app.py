@@ -5,6 +5,16 @@ import os
 import logging
 from functools import wraps
 
+# Security imports
+from flask_talisman import Talisman
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from config.security import SecurityConfig, validate_security_config
+from middleware.security_headers import create_security_middleware
+
+# Performance monitoring imports
+from performance.monitoring import performance_bp, performance_monitor
+
 # Suppress InsecureRequestWarning
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -12,7 +22,40 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 
+# Create Flask app with security configuration
 app = Flask(__name__)
+
+# Load security configuration
+security_config = SecurityConfig.from_environment()
+
+# Validate security configuration
+security_errors = validate_security_config()
+if security_errors:
+    app.logger.error(f"Security configuration errors: {security_errors}")
+    if os.environ.get('FLASK_ENV') == 'production':
+        raise RuntimeError(f"Security validation failed: {security_errors}")
+
+# Configure Flask security settings
+app.config.update(security_config.session_config)
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-key-change-in-production')
+
+# Initialize security middleware
+security_middleware = create_security_middleware(security_config)
+security_middleware.init_app(app)
+
+# Initialize Flask-Talisman for HTTPS and security headers
+talisman = Talisman(app, **security_config.get_talisman_config())
+
+# Initialize rate limiting
+limiter = Limiter(
+    app,
+    key_func=get_remote_address,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="memory://"
+)
+
+# Register performance monitoring blueprint
+app.register_blueprint(performance_bp)
 
 # Configuration
 AAP_URL = os.environ.get('AAP_URL', 'https://ansibleaap.chrobinson.com')
@@ -49,11 +92,14 @@ def requires_auth(f):
 
 @app.route('/')
 @requires_auth
+@performance_monitor
 def index():
     return render_template('index.html')
 
 @app.route('/api/test-connection', methods=['GET'])
+@limiter.limit("10 per minute")
 @requires_auth
+@performance_monitor
 def test_connection():
     """Test AAP API connection without launching job"""
     try:
@@ -124,7 +170,9 @@ def test_connection():
         }), 500
 
 @app.route('/api/launch-job', methods=['POST'])
+@limiter.limit("5 per minute")
 @requires_auth
+@performance_monitor
 def launch_job():
     try:
         data = request.json
@@ -218,6 +266,21 @@ def status():
         'aap_url': AAP_URL,
         'aap_token_set': bool(AAP_TOKEN),
         'aap_template_id': AAP_TEMPLATE_ID
+    })
+
+@app.route('/health')
+def health():
+    """Health check endpoint for monitoring and security validation"""
+    return jsonify({
+        'status': 'healthy',
+        'security': {
+            'talisman_enabled': talisman is not None,
+            'rate_limiting_enabled': limiter is not None,
+            'session_security': 'configured',
+            'security_headers': 'enabled'
+        },
+        'app': 'SSB Retire Server Web',
+        'version': '1.0.0-security-hardened'
     })
 
 # Handle 500 errors for better user experience
