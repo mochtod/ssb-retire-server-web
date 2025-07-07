@@ -74,9 +74,14 @@
                     <div class="row mb-4">
                         <div class="col-md-6">
                             <div class="mb-3">
-                                <label for="dns-server" class="form-label">DNS Servers</label>
-                                <input type="text" class="form-control" id="dns-server" value="10.68.64.100, 10.68.64.101" readonly disabled>
-                                <small class="text-muted">DNS servers are configured automatically</small>
+                                <label for="dns-server" class="form-label">DNS Server</label>
+                                <select class="form-select" id="dns-server">
+                                    <option value="chr2pr2dc38.chrobinson.com">chr2pr2dc38.chrobinson.com (default)</option>
+                                    <option value="lin2pr2dc38.chrobinson.com">lin2pr2dc38.chrobinson.com</option>
+                                    <option value="10.68.64.100">10.68.64.100</option>
+                                    <option value="10.68.64.101">10.68.64.101</option>
+                                </select>
+                                <small class="text-muted">Select primary DNS server for record management</small>
                             </div>
                         </div>
                         <div class="col-md-6">
