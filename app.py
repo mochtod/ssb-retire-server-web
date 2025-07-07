@@ -48,8 +48,8 @@ talisman = Talisman(app, **security_config.get_talisman_config())
 
 # Initialize rate limiting
 limiter = Limiter(
-    app,
-    key_func=get_remote_address,
+    get_remote_address,
+    app=app,
     default_limits=["200 per day", "50 per hour"],
     storage_uri="memory://"
 )
