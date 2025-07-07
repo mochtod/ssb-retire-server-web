@@ -186,6 +186,93 @@ def performance_dashboard():
                 opacity: 0.7;
                 margin-top: 20px;
             }
+            .retirement-stats {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 15px;
+                margin-bottom: 20px;
+            }
+            .stat-row {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 10px;
+                background: rgba(255,255,255,0.05);
+                border-radius: 5px;
+            }
+            .stat-label {
+                color: #ffd700;
+                font-weight: 500;
+            }
+            .stat-value {
+                color: #fff;
+                font-weight: bold;
+                font-size: 1.1em;
+            }
+            .active-jobs-list {
+                margin: 20px 0;
+            }
+            .job-item {
+                background: rgba(255,255,255,0.05);
+                border-radius: 5px;
+                padding: 15px;
+                margin-bottom: 10px;
+                border-left: 4px solid #28a745;
+            }
+            .job-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 10px;
+            }
+            .job-id {
+                font-weight: bold;
+                color: #ffd700;
+            }
+            .job-status {
+                padding: 4px 8px;
+                border-radius: 3px;
+                font-size: 0.8em;
+                font-weight: bold;
+            }
+            .status-running {
+                background: #17a2b8;
+                color: white;
+            }
+            .status-pending {
+                background: #ffc107;
+                color: black;
+            }
+            .status-successful {
+                background: #28a745;
+                color: white;
+            }
+            .status-failed {
+                background: #dc3545;
+                color: white;
+            }
+            .job-details {
+                font-size: 0.9em;
+                line-height: 1.4;
+            }
+            .job-details div {
+                margin-bottom: 5px;
+                opacity: 0.8;
+            }
+            .monitoring-actions {
+                display: flex;
+                gap: 10px;
+                margin-top: 15px;
+            }
+            .monitoring-actions .refresh-btn {
+                background: #17a2b8;
+                text-decoration: none;
+                display: inline-block;
+            }
+            .monitoring-actions .refresh-btn:hover {
+                background: #138496;
+                text-decoration: none;
+            }
         </style>
         <script>
             async function refreshDashboard() {
@@ -237,9 +324,101 @@ def performance_dashboard():
                     'Last updated: ' + new Date(data.last_updated).toLocaleString();
             }
             
+            // Retirement job monitoring functions
+            async function refreshJobData() {
+                try {
+                    const response = await fetch('/api/retirement/dashboard');
+                    const result = await response.json();
+                    
+                    if (result.status === 'success') {
+                        updateJobData(result.data);
+                    }
+                } catch (error) {
+                    console.error('Error refreshing job data:', error);
+                }
+            }
+            
+            function updateJobData(data) {
+                // Update statistics
+                document.getElementById('active-jobs-count').textContent = data.statistics.total_active;
+                document.getElementById('success-rate').textContent = data.statistics.success_rate_24h.toFixed(1) + '%';
+                document.getElementById('avg-duration').textContent = data.statistics.avg_duration_minutes.toFixed(1) + ' min';
+                document.getElementById('jobs-per-hour').textContent = data.statistics.jobs_per_hour.toFixed(2);
+                
+                // Update active jobs list
+                const activeJobsList = document.getElementById('active-jobs-list');
+                const jobsHtml = data.active_jobs.map(job => `
+                    <div class="job-item" data-job-id="${job.job_id}">
+                        <div class="job-header">
+                            <span class="job-id">Job #${job.job_id}</span>
+                            <span class="job-status status-${job.status}">${job.status.toUpperCase()}</span>
+                        </div>
+                        <div class="job-details">
+                            <div>Targets: ${job.target_hosts.join(', ')}</div>
+                            <div>Started: ${new Date(job.start_time).toLocaleTimeString()}</div>
+                            ${job.duration_seconds ? `<div>Duration: ${(job.duration_seconds / 60).toFixed(1)} min</div>` : ''}
+                        </div>
+                    </div>
+                `).join('');
+                
+                if (data.active_jobs.length === 0) {
+                    activeJobsList.innerHTML = '<h4>🔄 Active Jobs</h4><p>✅ No active retirement jobs</p>';
+                } else {
+                    activeJobsList.innerHTML = '<h4>🔄 Active Jobs</h4>' + jobsHtml;
+                }
+            }
+            
+            // WebSocket connection for real-time updates
+            let socket = null;
+            
+            function initWebSocket() {
+                if (typeof io !== 'undefined') {
+                    socket = io();
+                    
+                    socket.on('connect', function() {
+                        console.log('Connected to monitoring WebSocket');
+                        socket.emit('get_dashboard_update');
+                    });
+                    
+                    socket.on('job_update', function(data) {
+                        console.log('Job update received:', data);
+                        // Update specific job in the UI
+                        const jobElement = document.querySelector(`[data-job-id="${data.job_id}"]`);
+                        if (jobElement) {
+                            const statusElement = jobElement.querySelector('.job-status');
+                            if (statusElement) {
+                                statusElement.textContent = data.status.toUpperCase();
+                                statusElement.className = `job-status status-${data.status}`;
+                            }
+                        }
+                        
+                        // Refresh full data to update statistics
+                        refreshJobData();
+                    });
+                    
+                    socket.on('dashboard_stats_update', function(data) {
+                        console.log('Dashboard stats update:', data);
+                        document.getElementById('active-jobs-count').textContent = data.total_active;
+                        document.getElementById('success-rate').textContent = data.success_rate.toFixed(1) + '%';
+                        document.getElementById('avg-duration').textContent = data.avg_duration.toFixed(1) + ' min';
+                    });
+                    
+                    socket.on('disconnect', function() {
+                        console.log('Disconnected from monitoring WebSocket');
+                    });
+                }
+            }
+            
+            // Initialize WebSocket when page loads
+            document.addEventListener('DOMContentLoaded', function() {
+                initWebSocket();
+            });
+            
             // Auto-refresh every 30 seconds
             setInterval(refreshDashboard, 30000);
+            setInterval(refreshJobData, 45000);  // Refresh job data slightly offset
         </script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     </head>
     <body>
         <div class="container">
@@ -301,6 +480,57 @@ def performance_dashboard():
                         </div>
                         {% endfor %}
                         {% endif %}
+                    </div>
+                </div>
+                
+                <!-- Retirement Job Monitoring Section -->
+                <div class="metric-card" style="grid-column: 1 / -1;">
+                    <div class="metric-title">🔥 Retirement Job Monitoring</div>
+                    <div class="retirement-stats">
+                        <div class="stat-row">
+                            <span class="stat-label">Active Jobs:</span>
+                            <span class="stat-value" id="active-jobs-count">{{ data.retirement_jobs.total_active if data.retirement_jobs else 0 }}</span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-label">Success Rate (24h):</span>
+                            <span class="stat-value" id="success-rate">{{ "%.1f"|format(data.retirement_jobs.summary.success_rate if data.retirement_jobs else 0) }}%</span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-label">Avg Duration:</span>
+                            <span class="stat-value" id="avg-duration">{{ "%.1f"|format(data.retirement_jobs.summary.average_duration_minutes if data.retirement_jobs else 0) }} min</span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-label">Jobs/Hour:</span>
+                            <span class="stat-value" id="jobs-per-hour">{{ "%.2f"|format(data.retirement_jobs.summary.jobs_per_hour if data.retirement_jobs else 0) }}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="active-jobs-list" id="active-jobs-list">
+                        <h4>🔄 Active Jobs</h4>
+                        {% if data.retirement_jobs and data.retirement_jobs.active_jobs %}
+                        {% for job in data.retirement_jobs.active_jobs %}
+                        <div class="job-item" data-job-id="{{ job.job_id }}">
+                            <div class="job-header">
+                                <span class="job-id">Job #{{ job.job_id }}</span>
+                                <span class="job-status status-{{ job.status }}">{{ job.status|upper }}</span>
+                            </div>
+                            <div class="job-details">
+                                <div>Targets: {{ job.target_hosts|join(', ') }}</div>
+                                <div>Started: {{ job.start_time.split('T')[1].split('.')[0] if 'T' in job.start_time else job.start_time }}</div>
+                                {% if job.duration_seconds %}
+                                <div>Duration: {{ "%.1f"|format(job.duration_seconds / 60) }} min</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                        {% else %}
+                        <p>✅ No active retirement jobs</p>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="monitoring-actions">
+                        <button class="refresh-btn" onclick="refreshJobData()">🔄 Refresh Jobs</button>
+                        <a href="/retirement-monitor" class="refresh-btn">📊 Full Monitor</a>
                     </div>
                 </div>
             </div>

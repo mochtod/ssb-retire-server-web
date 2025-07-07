@@ -6,3 +6,6 @@ urllib3==2.0.2
 # Security enhancements
 flask-talisman==1.1.0
 flask-limiter==3.5.0
+# Real-time monitoring
+flask-socketio==5.3.4
+eventlet==0.33.3

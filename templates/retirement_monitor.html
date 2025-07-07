@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Retirement Job Monitor - SSB Retire Server</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dark-theme.css') }}">
+    <style>
+        .monitoring-header {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            padding: 2rem 0;
+            margin-bottom: 2rem;
+        }
+        .stat-card {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            margin-bottom: 1.5rem;
+        }
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #2a5298;
+        }
+        .stat-label {
+            color: #6c757d;
+            font-size: 1.1rem;
+        }
+        .job-card {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border-left: 4px solid #6c757d;
+        }
+        .job-card.running {
+            border-left-color: #17a2b8;
+        }
+        .job-card.successful {
+            border-left-color: #28a745;
+        }
+        .job-card.failed {
+            border-left-color: #dc3545;
+        }
+        .job-card.pending {
+            border-left-color: #ffc107;
+        }
+        .job-header {
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        .job-id {
+            font-weight: bold;
+            color: #2a5298;
+            font-size: 1.1rem;
+        }
+        .job-status {
+            padding: 0.25rem 0.75rem;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            text-transform: uppercase;
+        }
+        .status-running {
+            background-color: #d1ecf1;
+            color: #0c5460;
+        }
+        .status-pending {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .status-successful {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status-failed {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .progress-info {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 1rem;
+        }
+        .host-list {
+            margin-top: 0.5rem;
+        }
+        .host-tag {
+            display: inline-block;
+            background-color: #e9ecef;
+            color: #495057;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            margin-right: 0.5rem;
+            margin-bottom: 0.25rem;
+        }
+        .refresh-indicator {
+            color: #28a745;
+            margin-left: 0.5rem;
+        }
+        .monitoring-controls {
+            background: white;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .connection-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: #dc3545;
+        }
+        .status-indicator.connected {
+            background-color: #28a745;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: #6c757d;
+        }
+        .empty-state i {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+    </style>
+</head>
+<body>
+    <!-- Theme toggle button -->
+    <button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode">
+        <i class="fas fa-sun sun-icon"></i>
+        <i class="fas fa-moon moon-icon"></i>
+    </button>
+
+    <!-- Header -->
+    <div class="monitoring-header">
+        <div class="container">
+            <h1 class="mb-0">
+                <i class="fas fa-chart-line me-2"></i>
+                Retirement Job Monitor
+            </h1>
+            <p class="mb-0 mt-2 opacity-75">Real-time monitoring of VM retirement and shutdown jobs</p>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Monitoring Controls -->
+        <div class="monitoring-controls">
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <div class="connection-status">
+                        <div class="status-indicator" id="connection-indicator"></div>
+                        <span id="connection-status">Connecting...</span>
+                    </div>
+                </div>
+                <div class="col-md-6 text-end">
+                    <button class="btn btn-outline-primary btn-sm" onclick="refreshData()">
+                        <i class="fas fa-sync-alt" id="refresh-icon"></i>
+                        Refresh
+                    </button>
+                    <span class="text-muted small ms-2" id="last-update">Never</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Statistics Cards -->
+        <div class="row" id="stats-container">
+            <div class="col-lg-3 col-md-6">
+                <div class="stat-card">
+                    <div class="stat-number" id="total-jobs">0</div>
+                    <div class="stat-label">Total Jobs (24h)</div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <div class="stat-card">
+                    <div class="stat-number" id="active-jobs">0</div>
+                    <div class="stat-label">Active Jobs</div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <div class="stat-card">
+                    <div class="stat-number" id="success-rate">0%</div>
+                    <div class="stat-label">Success Rate</div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <div class="stat-card">
+                    <div class="stat-number" id="avg-duration">0m</div>
+                    <div class="stat-label">Avg Duration</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Active Jobs Section -->
+        <div class="row">
+            <div class="col-12">
+                <h3 class="mb-3">
+                    <i class="fas fa-cog fa-spin me-2"></i>
+                    Active Jobs
+                </h3>
+                <div id="active-jobs-container">
+                    <!-- Active jobs will be loaded here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Jobs Section -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <h3 class="mb-3">
+                    <i class="fas fa-history me-2"></i>
+                    Recent Jobs (24h)
+                </h3>
+                <div id="recent-jobs-container">
+                    <!-- Recent jobs will be loaded here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Empty State -->
+        <div class="empty-state d-none" id="empty-state">
+            <i class="fas fa-clipboard-list"></i>
+            <h4>No retirement jobs found</h4>
+            <p>No jobs have been executed in the last 24 hours.</p>
+            <a href="/" class="btn btn-primary">
+                <i class="fas fa-plus me-2"></i>
+                Schedule New Retirement
+            </a>
+        </div>
+    </div>
+
+    <!-- Job Details Modal -->
+    <div class="modal fade" id="jobDetailsModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Job Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="job-details-content">
+                    <!-- Job details content will be loaded here -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="monitor-job-btn">Monitor Job</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+    <script>
+        let socket = null;
+        let currentJobId = null;
+
+        // Initialize WebSocket connection
+        function initWebSocket() {
+            socket = io();
+            
+            socket.on('connect', function() {
+                updateConnectionStatus(true);
+                console.log('Connected to monitoring WebSocket');
+                socket.emit('get_dashboard_update');
+            });
+            
+            socket.on('disconnect', function() {
+                updateConnectionStatus(false);
+                console.log('Disconnected from monitoring WebSocket');
+            });
+            
+            socket.on('job_update', function(data) {
+                console.log('Job update received:', data);
+                updateJobInUI(data);
+                refreshData(); // Refresh stats
+            });
+            
+            socket.on('dashboard_stats_update', function(data) {
+                console.log('Dashboard stats update:', data);
+                updateStats(data);
+            });
+            
+            socket.on('job_started', function(data) {
+                console.log('New job started:', data);
+                refreshData(); // Full refresh for new jobs
+            });
+        }
+
+        // Update connection status indicator
+        function updateConnectionStatus(connected) {
+            const indicator = document.getElementById('connection-indicator');
+            const status = document.getElementById('connection-status');
+            
+            if (connected) {
+                indicator.classList.add('connected');
+                status.textContent = 'Connected';
+            } else {
+                indicator.classList.remove('connected');
+                status.textContent = 'Disconnected';
+            }
+        }
+
+        // Refresh all data
+        async function refreshData() {
+            const refreshIcon = document.getElementById('refresh-icon');
+            refreshIcon.classList.add('fa-spin');
+            
+            try {
+                const response = await fetch('/api/retirement/dashboard');
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    updateDashboard(result.data);
+                    document.getElementById('last-update').textContent = 
+                        new Date().toLocaleTimeString();
+                }
+            } catch (error) {
+                console.error('Error refreshing data:', error);
+            } finally {
+                refreshIcon.classList.remove('fa-spin');
+            }
+        }
+
+        // Update dashboard with new data
+        function updateDashboard(data) {
+            // Update statistics
+            updateStats({
+                total_active: data.statistics.total_active,
+                success_rate: data.statistics.success_rate_24h,
+                avg_duration: data.statistics.avg_duration_minutes
+            });
+            
+            document.getElementById('total-jobs').textContent = data.retirement_summary.total_jobs;
+            
+            // Update active jobs
+            updateJobsContainer('active-jobs-container', data.active_jobs, true);
+            
+            // Update recent jobs
+            updateJobsContainer('recent-jobs-container', data.recent_jobs, false);
+            
+            // Show/hide empty state
+            const hasJobs = data.active_jobs.length > 0 || data.recent_jobs.length > 0;
+            document.getElementById('empty-state').classList.toggle('d-none', hasJobs);
+        }
+
+        // Update statistics
+        function updateStats(data) {
+            document.getElementById('active-jobs').textContent = data.total_active || 0;
+            document.getElementById('success-rate').textContent = 
+                (data.success_rate || 0).toFixed(1) + '%';
+            document.getElementById('avg-duration').textContent = 
+                (data.avg_duration || 0).toFixed(1) + 'm';
+        }
+
+        // Update jobs container
+        function updateJobsContainer(containerId, jobs, isActive) {
+            const container = document.getElementById(containerId);
+            
+            if (jobs.length === 0) {
+                container.innerHTML = isActive ? 
+                    '<p class="text-muted">No active jobs</p>' :
+                    '<p class="text-muted">No recent jobs</p>';
+                return;
+            }
+            
+            container.innerHTML = jobs.map(job => createJobCard(job)).join('');
+        }
+
+        // Create job card HTML
+        function createJobCard(job) {
+            const startTime = new Date(job.start_time);
+            const duration = job.duration_seconds ? 
+                `${(job.duration_seconds / 60).toFixed(1)} min` : 
+                'In progress';
+                
+            const hostsHtml = job.target_hosts.map(host => 
+                `<span class="host-tag">${host}</span>`
+            ).join('');
+            
+            return `
+                <div class="job-card ${job.status}" data-job-id="${job.job_id}">
+                    <div class="job-header">
+                        <div>
+                            <div class="job-id">Job #${job.job_id}</div>
+                            <small class="text-muted">Started: ${startTime.toLocaleString()}</small>
+                        </div>
+                        <span class="job-status status-${job.status}">${job.status}</span>
+                    </div>
+                    
+                    <div class="host-list">
+                        <strong>Target hosts:</strong><br>
+                        ${hostsHtml}
+                    </div>
+                    
+                    <div class="progress-info">
+                        <span>Duration: ${duration}</span>
+                        ${job.success_rate !== undefined ? 
+                            `<span>Success Rate: ${job.success_rate.toFixed(1)}%</span>` : 
+                            ''
+                        }
+                        <button class="btn btn-sm btn-outline-primary" 
+                                onclick="showJobDetails('${job.job_id}')">
+                            <i class="fas fa-info-circle"></i> Details
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Update specific job in UI
+        function updateJobInUI(jobData) {
+            const jobElement = document.querySelector(`[data-job-id="${jobData.job_id}"]`);
+            if (jobElement) {
+                const statusElement = jobElement.querySelector('.job-status');
+                if (statusElement) {
+                    statusElement.textContent = jobData.status.toUpperCase();
+                    statusElement.className = `job-status status-${jobData.status}`;
+                }
+                
+                // Update job card class
+                jobElement.className = `job-card ${jobData.status}`;
+                
+                // Update duration if available
+                if (jobData.duration_seconds) {
+                    const progressInfo = jobElement.querySelector('.progress-info');
+                    const durationText = progressInfo.querySelector('span');
+                    if (durationText) {
+                        durationText.textContent = `Duration: ${(jobData.duration_seconds / 60).toFixed(1)} min`;
+                    }
+                }
+            }
+        }
+
+        // Show job details modal
+        async function showJobDetails(jobId) {
+            currentJobId = jobId;
+            
+            try {
+                const response = await fetch(`/api/retirement/jobs/${jobId}`);
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    const job = result.data.job;
+                    const history = result.data.status_history;
+                    
+                    document.getElementById('job-details-content').innerHTML = `
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>Job Information</h6>
+                                <p><strong>Job ID:</strong> ${job.job_id}</p>
+                                <p><strong>Status:</strong> <span class="badge bg-primary">${job.status}</span></p>
+                                <p><strong>Type:</strong> ${job.job_type}</p>
+                                <p><strong>Started:</strong> ${new Date(job.start_time).toLocaleString()}</p>
+                                ${job.end_time ? `<p><strong>Ended:</strong> ${new Date(job.end_time).toLocaleString()}</p>` : ''}
+                                ${job.duration_seconds ? `<p><strong>Duration:</strong> ${(job.duration_seconds / 60).toFixed(1)} minutes</p>` : ''}
+                                <p><strong>Success Rate:</strong> ${job.success_rate.toFixed(1)}%</p>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Target Hosts</h6>
+                                <ul class="list-unstyled">
+                                    ${job.target_hosts.map(host => `<li><i class="fas fa-server me-2"></i>${host}</li>`).join('')}
+                                </ul>
+                                
+                                ${job.errors && job.errors.length > 0 ? `
+                                    <h6 class="text-danger">Errors</h6>
+                                    <ul class="list-unstyled">
+                                        ${job.errors.map(error => `<li class="text-danger"><i class="fas fa-exclamation-triangle me-2"></i>${error}</li>`).join('')}
+                                    </ul>
+                                ` : ''}
+                            </div>
+                        </div>
+                        
+                        ${history.length > 0 ? `
+                            <hr>
+                            <h6>Status History</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Time</th>
+                                            <th>Status</th>
+                                            <th>Details</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${history.map(h => `
+                                            <tr>
+                                                <td>${new Date(h.timestamp).toLocaleString()}</td>
+                                                <td><span class="badge bg-secondary">${h.status}</span></td>
+                                                <td>${h.details || '-'}</td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ` : ''}
+                    `;
+                    
+                    new bootstrap.Modal(document.getElementById('jobDetailsModal')).show();
+                }
+            } catch (error) {
+                console.error('Error loading job details:', error);
+            }
+        }
+
+        // Monitor specific job
+        async function monitorJob() {
+            if (!currentJobId) return;
+            
+            try {
+                const response = await fetch(`/api/retirement/jobs/${currentJobId}/monitor`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({})
+                });
+                
+                const result = await response.json();
+                console.log('Manual job monitoring result:', result);
+                
+                if (result.status === 'success') {
+                    refreshData();
+                }
+            } catch (error) {
+                console.error('Error monitoring job:', error);
+            }
+        }
+
+        // Event listeners
+        document.getElementById('monitor-job-btn').addEventListener('click', monitorJob);
+
+        // Initialize everything when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            initWebSocket();
+            refreshData();
+            
+            // Auto-refresh every 30 seconds
+            setInterval(refreshData, 30000);
+        });
+    </script>
+</body>
+</html>

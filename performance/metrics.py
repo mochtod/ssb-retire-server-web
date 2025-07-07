@@ -38,6 +38,22 @@ class OptimizationSummary:
     overall_performance_score: float
 
 
+@dataclass
+class RetirementJobMetrics:
+    """Retirement job tracking metrics"""
+    job_id: str
+    status: str
+    job_type: str
+    target_hosts: List[str]
+    start_time: str
+    end_time: Optional[str] = None
+    duration_seconds: Optional[float] = None
+    success_rate: float = 0.0
+    errors: List[str] = None
+    aap_template_id: Optional[str] = None
+    extra_vars: Optional[Dict[str, Any]] = None
+
+
 class PerformanceMetricsCollector:
     """Collects and analyzes performance metrics from Ansible runs"""
     
@@ -76,6 +92,37 @@ class PerformanceMetricsCollector:
                     schedule_optimization REAL,
                     overall_performance_score REAL,
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS retirement_jobs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    job_id TEXT NOT NULL UNIQUE,
+                    status TEXT NOT NULL,
+                    job_type TEXT NOT NULL,
+                    target_hosts TEXT NOT NULL,
+                    start_time TEXT NOT NULL,
+                    end_time TEXT,
+                    duration_seconds REAL,
+                    success_rate REAL DEFAULT 0.0,
+                    errors TEXT,
+                    aap_template_id TEXT,
+                    extra_vars TEXT,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS job_status_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    job_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    details TEXT,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (job_id) REFERENCES retirement_jobs (job_id)
                 )
             """)
     
@@ -305,6 +352,117 @@ class PerformanceMetricsCollector:
                     })
         
         return alerts
+    
+    def track_retirement_job(self, job_metrics: RetirementJobMetrics):
+        """Track a retirement job in the database"""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("""
+                INSERT OR REPLACE INTO retirement_jobs 
+                (job_id, status, job_type, target_hosts, start_time, end_time, 
+                 duration_seconds, success_rate, errors, aap_template_id, extra_vars, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                job_metrics.job_id,
+                job_metrics.status,
+                job_metrics.job_type,
+                json.dumps(job_metrics.target_hosts),
+                job_metrics.start_time,
+                job_metrics.end_time,
+                job_metrics.duration_seconds,
+                job_metrics.success_rate,
+                json.dumps(job_metrics.errors) if job_metrics.errors else None,
+                job_metrics.aap_template_id,
+                json.dumps(job_metrics.extra_vars) if job_metrics.extra_vars else None,
+                datetime.now().isoformat()
+            ))
+            
+            # Add status history entry
+            conn.execute("""
+                INSERT INTO job_status_history (job_id, status, timestamp, details)
+                VALUES (?, ?, ?, ?)
+            """, (
+                job_metrics.job_id,
+                job_metrics.status,
+                datetime.now().isoformat(),
+                f"Job {job_metrics.status.lower()}"
+            ))
+    
+    def get_retirement_jobs(self, hours: int = 24, status: Optional[str] = None) -> List[RetirementJobMetrics]:
+        """Get retirement jobs from the database"""
+        since = datetime.now() - timedelta(hours=hours)
+        
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            
+            query = """
+                SELECT * FROM retirement_jobs 
+                WHERE start_time > ?
+            """
+            params = [since.isoformat()]
+            
+            if status:
+                query += " AND status = ?"
+                params.append(status)
+            
+            query += " ORDER BY start_time DESC"
+            
+            cursor = conn.execute(query, params)
+            
+            jobs = []
+            for row in cursor:
+                jobs.append(RetirementJobMetrics(
+                    job_id=row['job_id'],
+                    status=row['status'],
+                    job_type=row['job_type'],
+                    target_hosts=json.loads(row['target_hosts']),
+                    start_time=row['start_time'],
+                    end_time=row['end_time'],
+                    duration_seconds=row['duration_seconds'],
+                    success_rate=row['success_rate'],
+                    errors=json.loads(row['errors']) if row['errors'] else None,
+                    aap_template_id=row['aap_template_id'],
+                    extra_vars=json.loads(row['extra_vars']) if row['extra_vars'] else None
+                ))
+            
+            return jobs
+    
+    def get_job_status_history(self, job_id: str) -> List[Dict[str, str]]:
+        """Get status history for a specific job"""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            
+            cursor = conn.execute("""
+                SELECT status, timestamp, details FROM job_status_history 
+                WHERE job_id = ? 
+                ORDER BY timestamp ASC
+            """, (job_id,))
+            
+            return [dict(row) for row in cursor]
+    
+    def get_retirement_job_summary(self, hours: int = 24) -> Dict[str, Any]:
+        """Get summary statistics for retirement jobs"""
+        jobs = self.get_retirement_jobs(hours)
+        
+        total_jobs = len(jobs)
+        active_jobs = len([j for j in jobs if j.status in ['pending', 'running']])
+        completed_jobs = len([j for j in jobs if j.status == 'successful'])
+        failed_jobs = len([j for j in jobs if j.status == 'failed'])
+        
+        success_rate = (completed_jobs / total_jobs * 100) if total_jobs > 0 else 0
+        
+        # Calculate average duration for completed jobs
+        completed_durations = [j.duration_seconds for j in jobs if j.duration_seconds and j.status == 'successful']
+        avg_duration = sum(completed_durations) / len(completed_durations) if completed_durations else 0
+        
+        return {
+            'total_jobs': total_jobs,
+            'active_jobs': active_jobs,
+            'completed_jobs': completed_jobs,
+            'failed_jobs': failed_jobs,
+            'success_rate': success_rate,
+            'average_duration_minutes': avg_duration / 60 if avg_duration else 0,
+            'jobs_per_hour': total_jobs / max(hours, 1) if hours > 0 else 0
+        }
 
 
 def performance_monitor(func):
@@ -364,10 +522,21 @@ class PerformanceDashboard:
         trends = self.collector.get_performance_trends(hours=24)
         alerts = self.collector.get_alerts()
         
+        # Add retirement job data
+        retirement_summary = self.collector.get_retirement_job_summary(hours=24)
+        recent_jobs = self.collector.get_retirement_jobs(hours=24)
+        active_jobs = self.collector.get_retirement_jobs(hours=24, status='running')
+        
         return {
             'summary': asdict(summary),
             'trends': trends,
             'alerts': alerts,
+            'retirement_jobs': {
+                'summary': retirement_summary,
+                'recent_jobs': [asdict(job) for job in recent_jobs[:10]],  # Last 10 jobs
+                'active_jobs': [asdict(job) for job in active_jobs],
+                'total_active': len(active_jobs)
+            },
             'last_updated': datetime.now().isoformat(),
             'optimization_status': self._get_optimization_status(summary),
             'performance_grade': self._calculate_performance_grade(summary)
@@ -412,3 +581,114 @@ class PerformanceDashboard:
             return "D"
         else:
             return "F"
+
+
+class AAPJobMonitor:
+    """Monitor AAP jobs and update retirement job tracking"""
+    
+    def __init__(self, aap_url: str, aap_token: str):
+        self.aap_url = aap_url
+        self.aap_token = aap_token
+        self.collector = PerformanceMetricsCollector()
+        
+    def monitor_job(self, job_id: str, target_hosts: List[str], job_type: str = "retirement") -> RetirementJobMetrics:
+        """Monitor an AAP job and return current status"""
+        import requests
+        
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.aap_token}",
+                "Content-Type": "application/json"
+            }
+            
+            response = requests.get(
+                f"{self.aap_url}/api/v2/jobs/{job_id}/",
+                headers=headers,
+                verify=False,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                job_data = response.json()
+                
+                # Map AAP status to our status
+                aap_status = job_data.get('status', 'unknown')
+                status = self._map_aap_status(aap_status)
+                
+                # Calculate duration if finished
+                start_time = job_data.get('started')
+                end_time = job_data.get('finished')
+                duration = None
+                
+                if start_time and end_time:
+                    start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+                    end_dt = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
+                    duration = (end_dt - start_dt).total_seconds()
+                
+                # Calculate success rate
+                failed_hosts = job_data.get('failed', 0)
+                total_hosts = len(target_hosts)
+                success_rate = ((total_hosts - failed_hosts) / total_hosts * 100) if total_hosts > 0 else 0
+                
+                job_metrics = RetirementJobMetrics(
+                    job_id=str(job_id),
+                    status=status,
+                    job_type=job_type,
+                    target_hosts=target_hosts,
+                    start_time=start_time or datetime.now().isoformat(),
+                    end_time=end_time,
+                    duration_seconds=duration,
+                    success_rate=success_rate,
+                    errors=self._extract_job_errors(job_data),
+                    aap_template_id=str(job_data.get('job_template', '')),
+                    extra_vars=job_data.get('extra_vars', {})
+                )
+                
+                # Store/update in database
+                self.collector.track_retirement_job(job_metrics)
+                
+                return job_metrics
+                
+        except Exception as e:
+            # Create error job metrics
+            job_metrics = RetirementJobMetrics(
+                job_id=str(job_id),
+                status="error",
+                job_type=job_type,
+                target_hosts=target_hosts,
+                start_time=datetime.now().isoformat(),
+                errors=[f"Monitoring error: {str(e)}"]
+            )
+            
+            self.collector.track_retirement_job(job_metrics)
+            return job_metrics
+    
+    def _map_aap_status(self, aap_status: str) -> str:
+        """Map AAP job status to our standardized status"""
+        status_map = {
+            'pending': 'pending',
+            'waiting': 'pending',
+            'running': 'running',
+            'successful': 'successful',
+            'failed': 'failed',
+            'error': 'failed',
+            'canceled': 'failed',
+            'never updated': 'pending'
+        }
+        return status_map.get(aap_status.lower(), 'unknown')
+    
+    def _extract_job_errors(self, job_data: Dict[str, Any]) -> List[str]:
+        """Extract error messages from AAP job data"""
+        errors = []
+        
+        if job_data.get('status') in ['failed', 'error']:
+            if job_data.get('result_stdout'):
+                # Parse stdout for error messages
+                stdout = job_data['result_stdout']
+                if 'FAILED' in stdout or 'ERROR' in stdout:
+                    errors.append("Job execution failed - check AAP logs for details")
+            
+            if job_data.get('job_explanation'):
+                errors.append(job_data['job_explanation'])
+        
+        return errors if errors else None

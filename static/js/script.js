@@ -389,9 +389,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     <div class="mt-4">
                         <h5>Next Steps:</h5>
-                        <a href="https://ansibleaap.chrobinson.com/#/jobs/${data.job_id || ''}" target="_blank" class="btn btn-outline-primary">
-                            <i class="fas fa-external-link-alt me-2"></i> View Job Output
-                        </a>
+                        <div class="btn-group" role="group">
+                            <a href="/retirement-monitor" target="_blank" class="btn btn-primary">
+                                <i class="fas fa-chart-line me-2"></i> Monitor Job Progress
+                            </a>
+                            <a href="https://ansibleaap.chrobinson.com/#/jobs/${data.job_id || ''}" target="_blank" class="btn btn-outline-primary">
+                                <i class="fas fa-external-link-alt me-2"></i> View in AAP
+                            </a>
+                        </div>
                     </div>
                 `;
             }

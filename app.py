@@ -3,6 +3,7 @@ import requests
 import json
 import os
 import logging
+from datetime import datetime
 from functools import wraps
 
 # Security imports
@@ -14,6 +15,10 @@ from middleware.security_headers import create_security_middleware
 
 # Performance monitoring imports
 from performance.monitoring import performance_bp, performance_monitor
+from performance.metrics import PerformanceMetricsCollector, AAPJobMonitor, RetirementJobMetrics
+
+# WebSocket imports for real-time monitoring
+from flask_socketio import SocketIO, emit
 
 # Suppress InsecureRequestWarning
 import urllib3
@@ -54,8 +59,15 @@ limiter = Limiter(
     storage_uri="memory://"
 )
 
+# Initialize SocketIO for real-time monitoring
+socketio = SocketIO(app, cors_allowed_origins="*", logger=True, engineio_logger=True)
+
 # Register performance monitoring blueprint
 app.register_blueprint(performance_bp)
+
+# Initialize performance collector and job monitor
+performance_collector = PerformanceMetricsCollector()
+job_monitor = None  # Will be initialized when AAP credentials are available
 
 # Configuration
 AAP_URL = os.environ.get('AAP_URL', 'https://ansibleaap.chrobinson.com')
@@ -95,6 +107,14 @@ def requires_auth(f):
 @performance_monitor
 def index():
     return render_template('index.html')
+
+
+@app.route('/retirement-monitor')
+@requires_auth
+@performance_monitor
+def retirement_monitor():
+    """Dedicated retirement job monitoring page"""
+    return render_template('retirement_monitor.html')
 
 @app.route('/api/test-connection', methods=['GET'])
 @limiter.limit("10 per minute")
@@ -246,9 +266,42 @@ def launch_job():
         job_data = job_response.json()
         app.logger.debug(f"Job response: {json.dumps(job_data)}")
         
+        # Track the job in our monitoring system
+        job_id = job_data.get('id')
+        if job_id:
+            try:
+                # Initialize job monitor if not already done
+                global job_monitor
+                if not job_monitor and AAP_TOKEN:
+                    job_monitor = AAPJobMonitor(AAP_URL, AAP_TOKEN)
+                
+                # Create initial job tracking entry
+                job_metrics = RetirementJobMetrics(
+                    job_id=str(job_id),
+                    status="pending",
+                    job_type="retirement",
+                    target_hosts=record_names,
+                    start_time=datetime.now().isoformat(),
+                    aap_template_id=AAP_TEMPLATE_ID,
+                    extra_vars=extra_vars
+                )
+                
+                performance_collector.track_retirement_job(job_metrics)
+                
+                # Emit real-time update
+                socketio.emit('job_started', {
+                    'job_id': str(job_id),
+                    'status': 'pending',
+                    'target_hosts': record_names,
+                    'job_type': 'retirement'
+                })
+                
+            except Exception as e:
+                app.logger.error(f"Error tracking job: {str(e)}")
+        
         return jsonify({
             'success': True,
-            'job_id': job_data.get('id'),
+            'job_id': job_id,
             'job_url': job_data.get('url')
         })
         
@@ -283,6 +336,177 @@ def health():
         'version': '1.0.0-security-hardened'
     })
 
+
+@app.route('/api/retirement/jobs')
+@requires_auth
+@performance_monitor
+def get_retirement_jobs():
+    """Get retirement jobs with optional filtering"""
+    try:
+        hours = request.args.get('hours', 24, type=int)
+        status = request.args.get('status', None)
+        
+        jobs = performance_collector.get_retirement_jobs(hours=hours, status=status)
+        summary = performance_collector.get_retirement_job_summary(hours=hours)
+        
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'jobs': [job.__dict__ for job in jobs],
+                'summary': summary,
+                'total_count': len(jobs)
+            },
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting retirement jobs: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+
+@app.route('/api/retirement/jobs/<job_id>')
+@requires_auth
+@performance_monitor
+def get_job_details(job_id):
+    """Get detailed information about a specific job"""
+    try:
+        # Get job from database
+        jobs = performance_collector.get_retirement_jobs(hours=168)  # Last week
+        job = next((j for j in jobs if j.job_id == job_id), None)
+        
+        if not job:
+            return jsonify({
+                'status': 'error',
+                'message': 'Job not found'
+            }), 404
+        
+        # Get status history
+        status_history = performance_collector.get_job_status_history(job_id)
+        
+        # If we have AAP access, get live status
+        if job_monitor and job.status in ['pending', 'running']:
+            try:
+                updated_job = job_monitor.monitor_job(job_id, job.target_hosts, job.job_type)
+                job = updated_job
+            except Exception as e:
+                app.logger.warning(f"Could not get live job status: {str(e)}")
+        
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'job': job.__dict__,
+                'status_history': status_history
+            },
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting job details: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+
+@app.route('/api/retirement/jobs/<job_id>/monitor', methods=['POST'])
+@requires_auth
+@performance_monitor
+def monitor_job_status(job_id):
+    """Manually trigger job status monitoring"""
+    try:
+        if not job_monitor:
+            return jsonify({
+                'status': 'error',
+                'message': 'Job monitoring not available - AAP credentials not configured'
+            }), 503
+        
+        # Get target hosts from request or database
+        target_hosts = request.json.get('target_hosts', [])
+        if not target_hosts:
+            # Try to get from database
+            jobs = performance_collector.get_retirement_jobs(hours=168)
+            job = next((j for j in jobs if j.job_id == job_id), None)
+            if job:
+                target_hosts = job.target_hosts
+        
+        if not target_hosts:
+            return jsonify({
+                'status': 'error',
+                'message': 'Target hosts not found for job'
+            }), 400
+        
+        # Monitor the job
+        job_metrics = job_monitor.monitor_job(job_id, target_hosts)
+        
+        # Emit real-time update
+        socketio.emit('job_update', {
+            'job_id': job_id,
+            'status': job_metrics.status,
+            'duration_seconds': job_metrics.duration_seconds,
+            'success_rate': job_metrics.success_rate,
+            'errors': job_metrics.errors
+        })
+        
+        return jsonify({
+            'status': 'success',
+            'data': job_metrics.__dict__,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error monitoring job: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+
+@app.route('/api/retirement/dashboard')
+@requires_auth
+@performance_monitor
+def get_retirement_dashboard():
+    """Get comprehensive retirement monitoring dashboard data"""
+    try:
+        hours = request.args.get('hours', 24, type=int)
+        
+        # Get job summary and active jobs
+        summary = performance_collector.get_retirement_job_summary(hours=hours)
+        recent_jobs = performance_collector.get_retirement_jobs(hours=hours)
+        active_jobs = performance_collector.get_retirement_jobs(hours=hours, status='running')
+        
+        # Get performance metrics too
+        from performance.monitoring import dashboard
+        perf_data = dashboard.get_dashboard_data()
+        
+        dashboard_data = {
+            'retirement_summary': summary,
+            'recent_jobs': [job.__dict__ for job in recent_jobs[:20]],  # Last 20 jobs
+            'active_jobs': [job.__dict__ for job in active_jobs],
+            'performance_data': perf_data,
+            'statistics': {
+                'total_active': len(active_jobs),
+                'success_rate_24h': summary['success_rate'],
+                'avg_duration_minutes': summary['average_duration_minutes'],
+                'jobs_per_hour': summary['jobs_per_hour']
+            },
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        return jsonify({
+            'status': 'success',
+            'data': dashboard_data
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting retirement dashboard: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
 # Handle 500 errors for better user experience
 @app.errorhandler(500)
 def server_error(e):
@@ -292,5 +516,126 @@ def server_error(e):
         'message': 'An unexpected error occurred on the server. Please check the logs for details.'
     }), 500
 
+
+# WebSocket event handlers
+@socketio.on('connect')
+def handle_connect():
+    """Handle client connection"""
+    app.logger.info('Client connected to monitoring WebSocket')
+    emit('connected', {'status': 'Connected to retirement monitoring'})
+
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    """Handle client disconnection"""
+    app.logger.info('Client disconnected from monitoring WebSocket')
+
+
+@socketio.on('subscribe_job_updates')
+def handle_subscribe_job_updates(data):
+    """Subscribe to job updates for specific jobs"""
+    job_ids = data.get('job_ids', [])
+    app.logger.info(f'Client subscribed to job updates for: {job_ids}')
+    
+    # Send current status for requested jobs
+    try:
+        for job_id in job_ids:
+            jobs = performance_collector.get_retirement_jobs(hours=168)
+            job = next((j for j in jobs if j.job_id == job_id), None)
+            if job:
+                emit('job_update', {
+                    'job_id': job_id,
+                    'status': job.status,
+                    'duration_seconds': job.duration_seconds,
+                    'success_rate': job.success_rate,
+                    'errors': job.errors
+                })
+    except Exception as e:
+        app.logger.error(f"Error sending job updates: {str(e)}")
+
+
+@socketio.on('get_dashboard_update')
+def handle_dashboard_update():
+    """Send dashboard update to client"""
+    try:
+        hours = 24
+        summary = performance_collector.get_retirement_job_summary(hours=hours)
+        active_jobs = performance_collector.get_retirement_jobs(hours=hours, status='running')
+        
+        emit('dashboard_update', {
+            'summary': summary,
+            'active_jobs': [job.__dict__ for job in active_jobs],
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        app.logger.error(f"Error sending dashboard update: {str(e)}")
+
+
+def background_job_monitoring():
+    """Background task to monitor active jobs and emit updates"""
+    import time
+    
+    last_checked_jobs = set()
+    
+    while True:
+        try:
+            if job_monitor:
+                # Get active jobs
+                active_jobs = performance_collector.get_retirement_jobs(hours=48, status='running')
+                pending_jobs = performance_collector.get_retirement_jobs(hours=48, status='pending')
+                
+                current_jobs = set()
+                
+                # Monitor each active/pending job
+                for job in active_jobs + pending_jobs:
+                    current_jobs.add(job.job_id)
+                    
+                    try:
+                        # Get updated status from AAP
+                        updated_job = job_monitor.monitor_job(job.job_id, job.target_hosts, job.job_type)
+                        
+                        # Check if status changed
+                        if job.status != updated_job.status or job.job_id not in last_checked_jobs:
+                            # Emit update
+                            socketio.emit('job_update', {
+                                'job_id': job.job_id,
+                                'status': updated_job.status,
+                                'duration_seconds': updated_job.duration_seconds,
+                                'success_rate': updated_job.success_rate,
+                                'errors': updated_job.errors,
+                                'target_hosts': updated_job.target_hosts
+                            })
+                            
+                            app.logger.info(f"Job {job.job_id} status updated: {updated_job.status}")
+                    
+                    except Exception as e:
+                        app.logger.error(f"Error monitoring job {job.job_id}: {str(e)}")
+                
+                last_checked_jobs = current_jobs
+                
+                # Send periodic dashboard updates
+                if len(current_jobs) > 0:
+                    summary = performance_collector.get_retirement_job_summary(hours=24)
+                    socketio.emit('dashboard_stats_update', {
+                        'total_active': len(active_jobs),
+                        'success_rate': summary['success_rate'],
+                        'avg_duration': summary['average_duration_minutes'],
+                        'timestamp': datetime.now().isoformat()
+                    })
+            
+        except Exception as e:
+            app.logger.error(f"Error in background monitoring: {str(e)}")
+        
+        # Wait 30 seconds before next check
+        time.sleep(30)
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # Initialize job monitor if credentials are available
+    if AAP_TOKEN:
+        job_monitor = AAPJobMonitor(AAP_URL, AAP_TOKEN)
+        
+        # Start background monitoring task
+        socketio.start_background_task(background_job_monitoring)
+    
+    # Run with SocketIO
+    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
