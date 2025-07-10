@@ -116,6 +116,26 @@ def retirement_monitor():
     """Dedicated retirement job monitoring page"""
     return render_template('retirement_monitor.html')
 
+@app.route('/job-reports/<filename>')
+@requires_auth
+def serve_job_report(filename):
+    """Serve HTML job reports"""
+    import os
+    from flask import send_from_directory, abort
+    
+    # Security: only allow .html files and prevent directory traversal
+    if not filename.endswith('.html') or '..' in filename:
+        abort(404)
+    
+    reports_dir = os.path.join(os.path.dirname(__file__), 'job_reports')
+    if not os.path.exists(reports_dir):
+        abort(404)
+    
+    try:
+        return send_from_directory(reports_dir, filename)
+    except FileNotFoundError:
+        abort(404)
+
 @app.route('/api/test-connection', methods=['GET'])
 @limiter.limit("10 per minute")
 @requires_auth
